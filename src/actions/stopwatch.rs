@@ -61,14 +61,28 @@ impl Action for StopwatchAction {
 
     fn init(&mut self, cx: &Context, ctx_id: &str) {
         cx.sd().get_settings(ctx_id);
-        render_time_hhmmss(cx, ctx_id, 0);
     }
 
-    fn did_receive_settings(&mut self, _cx: &Context, ev: &incoming::DidReceiveSettings) {
+    fn did_receive_settings(&mut self, cx: &Context, ev: &incoming::DidReceiveSettings) {
         self.long_press_ms = parse_settings(&ev.settings);
+        if !self.running {
+            let elapsed_secs = self.elapsed_ms.load(Ordering::Relaxed) / 1000;
+            render_time_hhmmss(cx, ev.context, elapsed_secs);
+        }
+    }
+
+    fn will_appear(&mut self, cx: &Context, ev: &incoming::WillAppear) {
+        if self.running {
+            // Resume the tick thread after a profile/page switch
+            self.start_tick(cx, ev.context);
+        } else {
+            let elapsed_secs = self.elapsed_ms.load(Ordering::Relaxed) / 1000;
+            render_time_hhmmss(cx, ev.context, elapsed_secs);
+        }
     }
 
     fn will_disappear(&mut self, _cx: &Context, _ev: &incoming::WillDisappear) {
+        // Stop the tick thread but keep self.running = true so will_appear can restart it
         self.stop_tick();
     }
 

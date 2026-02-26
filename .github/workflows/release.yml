@@ -9,7 +9,7 @@ on:
 env:
   PLUGIN_UUID: icu.veelume.counter
   PLUGIN_DIR: icu.veelume.counter.sdPlugin
-  BINARY_NAME: icu_veelume_counter
+  BINARY_NAME: plugin
 
 jobs:
   build:

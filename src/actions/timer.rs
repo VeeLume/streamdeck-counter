@@ -68,17 +68,36 @@ impl Action for TimerAction {
 
     fn did_receive_settings(&mut self, cx: &Context, ev: &incoming::DidReceiveSettings) {
         let (duration_secs, long_press_ms) = parse_settings(&ev.settings);
-        self.duration_ms = duration_secs.saturating_mul(1000);
+        let new_duration_ms = duration_secs.saturating_mul(1000);
         self.long_press_ms = long_press_ms;
 
-        // Stop any running tick thread and reset to new duration
-        self.stop_tick();
-        self.running = false;
-        self.remaining_ms.store(self.duration_ms, Ordering::Relaxed);
-        render_time_mmss(cx, ev.context, duration_secs);
+        if new_duration_ms != self.duration_ms {
+            // Duration changed — stop and reset to the new duration
+            self.stop_tick();
+            self.running = false;
+            self.duration_ms = new_duration_ms;
+            self.remaining_ms.store(self.duration_ms, Ordering::Relaxed);
+            render_time_mmss(cx, ev.context, duration_secs);
+        } else if !self.running {
+            // Same duration, not running — just re-render current remaining time
+            let remaining_secs = self.remaining_ms.load(Ordering::Relaxed) / 1000;
+            render_time_mmss(cx, ev.context, remaining_secs);
+        }
+        // If running, the tick thread is already updating the display
+    }
+
+    fn will_appear(&mut self, cx: &Context, ev: &incoming::WillAppear) {
+        if self.running {
+            // Resume the tick thread after a profile/page switch
+            self.start_tick(cx, ev.context);
+        } else {
+            let remaining_secs = self.remaining_ms.load(Ordering::Relaxed) / 1000;
+            render_time_mmss(cx, ev.context, remaining_secs);
+        }
     }
 
     fn will_disappear(&mut self, _cx: &Context, _ev: &incoming::WillDisappear) {
+        // Stop the tick thread but keep self.running = true so will_appear can restart it
         self.stop_tick();
     }
 
