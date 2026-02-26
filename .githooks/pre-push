@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "▶ cargo fmt --check"
+cargo fmt --all -- --check
+
+echo "▶ cargo clippy"
+cargo clippy --all-targets --all-features
+
+echo "▶ cargo check"
+cargo check --all-targets --all-features
+
+# If you want tests, uncomment:
+# echo "▶ cargo test"
+# cargo test --all --all-features
+
+echo "✓ pre-push checks passed"

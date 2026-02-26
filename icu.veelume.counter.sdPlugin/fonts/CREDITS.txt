@@ -1,0 +1,6 @@
+UAV OSD Sans Mono
+=================
+Font by Nicholas Kruse
+Website: https://nicholaskruse.com/work/uavosd
+
+Free for personal and commercial use.

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
+  <!-- Dark background -->
+  <rect width="72" height="72" fill="#1a1a2e"/>
+  <!-- Label -->
+  <text x="36" y="12" font-family="monospace" font-size="9" font-weight="bold"
+        fill="#7c6fff" text-anchor="middle" letter-spacing="1">TIMER</text>
+  <!-- Hourglass shape -->
+  <!-- Top triangle -->
+  <polygon points="20,18 52,18 36,40" fill="#5a4fcf"/>
+  <!-- Bottom triangle -->
+  <polygon points="20,58 52,58 36,40" fill="#7c6fff"/>
+  <!-- Hourglass frame top/bottom bars -->
+  <rect x="18" y="15" width="36" height="4" rx="2" fill="#b0b0ff"/>
+  <rect x="18" y="57" width="36" height="4" rx="2" fill="#b0b0ff"/>
+  <!-- Sand dot at waist -->
+  <circle cx="36" cy="40" r="2.5" fill="#e0e0ff"/>
+  <!-- Countdown display -->
+  <text x="36" y="67" font-family="monospace" font-size="9"
+        fill="#b0b0ff" text-anchor="middle">00:00</text>
+</svg>

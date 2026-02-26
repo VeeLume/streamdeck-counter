@@ -1,0 +1,8 @@
+# don't publish to crates.io
+publish = false
+# create tags like v1.2.3
+tag-name = "v{{version}}"
+# push commits and tags by default
+push = true
+# optional, keep messages tidy
+pre-release-commit-message = "Release {{version}}"

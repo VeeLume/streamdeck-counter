@@ -1,0 +1,19 @@
+[package]
+name = "streamdeck-counter"
+version = "0.1.0"
+edition = "2024"
+authors = ["Veelume"]
+
+[[bin]]
+name = "plugin"
+path = "src/main.rs"
+
+
+[dependencies]
+anyhow = "1"
+const_format = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+streamdeck-lib = { git = "https://github.com/veelume/streamdeck-lib", tag = "v0.4.3" }
+streamdeck-render = { git = "https://github.com/veelume/streamdeck-render", tag = "v0.1.3" }

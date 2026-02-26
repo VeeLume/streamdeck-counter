@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
+  <!-- Dark background for key display -->
+  <rect width="72" height="72" fill="#1a1a2e"/>
+  <!-- Large "0" numeral -->
+  <text x="36" y="40" font-family="monospace" font-size="40" font-weight="bold"
+        fill="#e0e0ff" text-anchor="middle" dominant-baseline="middle">0</text>
+  <!-- Plus icon bottom-right -->
+  <rect x="46" y="54" width="14" height="3" rx="1.5" fill="#7c6fff"/>
+  <rect x="51.5" y="48.5" width="3" height="14" rx="1.5" fill="#7c6fff"/>
+  <!-- Minus icon bottom-left -->
+  <rect x="12" y="54" width="14" height="3" rx="1.5" fill="#7c6fff"/>
+  <!-- Label -->
+  <text x="36" y="12" font-family="monospace" font-size="9" font-weight="bold"
+        fill="#7c6fff" text-anchor="middle" letter-spacing="1">COUNTER</text>
+</svg>

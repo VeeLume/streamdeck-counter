@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <script src="sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Counter ID">
+        <sdpi-textfield setting="counterId" placeholder="(leave empty for per-key)"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Initial Value">
+        <sdpi-textfield setting="initialValue" type="number" placeholder="0"></sdpi-textfield>
+    </sdpi-item>
+
+    <hr />
+
+    <sdpi-item label="Short Press">
+        <sdpi-select setting="shortAction">
+            <option value="none">None</option>
+            <option value="add" selected>Add</option>
+            <option value="subtract">Subtract</option>
+            <option value="multiply">Multiply</option>
+            <option value="divide">Divide</option>
+            <option value="reset">Reset to Initial</option>
+            <option value="set">Set to Value</option>
+        </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Short Value">
+        <sdpi-textfield setting="shortValue" type="number" placeholder="1"></sdpi-textfield>
+    </sdpi-item>
+
+    <hr />
+
+    <sdpi-item label="Long Press">
+        <sdpi-select setting="longAction">
+            <option value="none" selected>None</option>
+            <option value="add">Add</option>
+            <option value="subtract">Subtract</option>
+            <option value="multiply">Multiply</option>
+            <option value="divide">Divide</option>
+            <option value="reset">Reset to Initial</option>
+            <option value="set">Set to Value</option>
+        </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Long Value">
+        <sdpi-textfield setting="longValue" type="number" placeholder="0"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Long Press (ms)">
+        <sdpi-textfield setting="longPressMs" type="number" placeholder="500"></sdpi-textfield>
+    </sdpi-item>
+</body>
+</html>

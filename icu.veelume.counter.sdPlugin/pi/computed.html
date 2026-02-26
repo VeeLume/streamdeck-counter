@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <script src="sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Expression">
+        <sdpi-textfield setting="expression" placeholder="e.g. A + B * 2"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Missing counters as zero">
+        <sdpi-checkbox setting="missingAsZero"></sdpi-checkbox>
+    </sdpi-item>
+
+    <sdpi-item label="Syntax">
+        <sdpi-item-child>
+            <small>
+                Identifiers: <code>A</code>, <code>"counter-1"</code>, <code>var("id")</code><br>
+                Operators: <code>+ - * / ( )</code>
+            </small>
+        </sdpi-item-child>
+    </sdpi-item>
+</body>
+</html>

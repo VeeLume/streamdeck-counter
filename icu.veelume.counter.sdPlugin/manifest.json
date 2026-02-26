@@ -1,0 +1,85 @@
+{
+    "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+    "Software": {
+        "MinimumVersion": "7.1"
+    },
+    "SDKVersion": 3,
+    "UUID": "icu.veelume.counter",
+    "Name": "V's Counter",
+    "Category": "V's Counter",
+    "CategoryIcon": "images/category",
+    "Description": "A simple counter/timer/stopwatch plugin for Stream Deck.",
+    "Version": "1.0.0.0",
+    "Author": "Veelume",
+    "URL": "https://github.com/veelume/streamdeck-counter",
+    "Icon": "images/plugin",
+    "OS": [
+        {
+            "Platform": "windows",
+            "MinimumVersion": "10.0.0"
+        }
+    ],
+    "CodePath": "bin/icu.veelume.counter.exe",
+    "Actions": [
+        {
+            "UUID": "icu.veelume.counter.counter",
+            "Name": "Counter",
+            "Tooltip": "Modifies a counter each time the button is pressed.",
+            "Icon": "images/counter",
+            "PropertyInspectorPath": "pi/counter.html",
+            "Controllers": [
+                "Keypad"
+            ],
+            "States": [
+                {
+                    "Image": "images/counter"
+                }
+            ]
+        },
+        {
+            "UUID": "icu.veelume.counter.computed",
+            "Name": "Computed Display",
+            "Tooltip": "Shows the result of an expression over other counters.",
+            "Icon": "images/computed",
+            "PropertyInspectorPath": "pi/computed.html",
+            "Controllers": [
+                "Keypad"
+            ],
+            "States": [
+                {
+                    "Image": "images/computed"
+                }
+            ]
+        },
+        {
+            "UUID": "icu.veelume.counter.timer",
+            "Name": "Timer",
+            "Tooltip": "A simple timer.",
+            "Icon": "images/timer",
+            "PropertyInspectorPath": "pi/timer.html",
+            "Controllers": [
+                "Keypad"
+            ],
+            "States": [
+                {
+                    "Image": "images/timer"
+                }
+            ]
+        },
+        {
+            "UUID": "icu.veelume.counter.stopwatch",
+            "Name": "Stopwatch",
+            "Tooltip": "A simple stopwatch.",
+            "Icon": "images/stopwatch",
+            "PropertyInspectorPath": "pi/stopwatch.html",
+            "Controllers": [
+                "Keypad"
+            ],
+            "States": [
+                {
+                    "Image": "images/stopwatch"
+                }
+            ]
+        }
+    ]
+}

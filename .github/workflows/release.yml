@@ -1,0 +1,73 @@
+name: Release
+
+# Triggers on version tags like v1.0.0.0 or v1.2.3.4
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+.[0-9]+"
+
+env:
+  PLUGIN_UUID: icu.veelume.counter
+  PLUGIN_DIR: icu.veelume.counter.sdPlugin
+  BINARY_NAME: icu_veelume_counter
+
+jobs:
+  build:
+    name: Build & Pack
+    runs-on: windows-latest
+
+    steps:
+      # ── checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── toolchain ───────────────────────────────────────────────────────────
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry + build
+        uses: Swatinem/rust-cache@v2
+
+      # ── build ────────────────────────────────────────────────────────────────
+      - name: cargo build --release
+        run: cargo build --release
+
+      # ── assemble plugin ───────────────────────────────────────────────────────
+      - name: Copy binary into plugin folder
+        run: |
+          cp target/release/${{ env.BINARY_NAME }}.exe \
+             ${{ env.PLUGIN_DIR }}/bin/${{ env.PLUGIN_UUID }}.exe
+
+      # ── elgato CLI ─────────────────────────────────────────────────────────
+      - name: Install Elgato Stream Deck CLI
+        run: npm install -g @elgato/cli@latest
+
+      - name: Validate plugin
+        run: streamdeck validate ${{ env.PLUGIN_DIR }}
+
+      - name: Pack plugin
+        run: streamdeck pack ${{ env.PLUGIN_DIR }}
+
+      # ── derive clean version from tag ────────────────────────────────────────
+      # Tag is v1.0.0.0 → version is 1.0.0.0
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ── upload packed artifact (always available) ─────────────────────────
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PLUGIN_UUID }}-${{ steps.version.outputs.version }}
+          path: "*.streamDeckPlugin"
+          if-no-files-found: error
+
+      # ── GitHub Release ────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "v${{ steps.version.outputs.version }}"
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: "*.streamDeckPlugin"

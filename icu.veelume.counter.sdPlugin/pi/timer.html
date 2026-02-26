@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <script src="sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Duration (seconds)">
+        <sdpi-textfield setting="durationSecs" type="number" placeholder="60" min="1"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Long Press (ms)">
+        <sdpi-textfield setting="longPressMs" type="number" placeholder="500"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Usage">
+        <sdpi-item-child>
+            <small>
+                Short press: start / stop<br>
+                Long press: reset to duration
+            </small>
+        </sdpi-item-child>
+    </sdpi-item>
+</body>
+</html>

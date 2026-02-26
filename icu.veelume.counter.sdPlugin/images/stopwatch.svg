@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
+  <!-- Dark background -->
+  <rect width="72" height="72" fill="#1a1a2e"/>
+  <!-- Label -->
+  <text x="36" y="12" font-family="monospace" font-size="9" font-weight="bold"
+        fill="#7c6fff" text-anchor="middle" letter-spacing="1">STOPWATCH</text>
+  <!-- Outer watch circle -->
+  <circle cx="36" cy="42" r="24" fill="none" stroke="#5a4fcf" stroke-width="4"/>
+  <!-- Inner face fill -->
+  <circle cx="36" cy="42" r="20" fill="#111130"/>
+  <!-- Crown / button on top -->
+  <rect x="32" y="14" width="8" height="5" rx="2" fill="#7c6fff"/>
+  <!-- Side button (start/stop lug) -->
+  <rect x="56" y="28" width="5" height="7" rx="2" fill="#7c6fff"/>
+  <!-- Hour hand (pointing to ~12) -->
+  <line x1="36" y1="42" x2="36" y2="26" stroke="#e0e0ff" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Minute hand (pointing to ~3) -->
+  <line x1="36" y1="42" x2="50" y2="42" stroke="#b0b0ff" stroke-width="2" stroke-linecap="round"/>
+  <!-- Center dot -->
+  <circle cx="36" cy="42" r="2.5" fill="#7c6fff"/>
+  <!-- Tick marks at 12/3/6/9 -->
+  <line x1="36" y1="20" x2="36" y2="24" stroke="#5a4fcf" stroke-width="2"/>
+  <line x1="36" y1="60" x2="36" y2="64" stroke="#5a4fcf" stroke-width="2"/>
+  <line x1="14" y1="42" x2="18" y2="42" stroke="#5a4fcf" stroke-width="2"/>
+  <line x1="54" y1="42" x2="58" y2="42" stroke="#5a4fcf" stroke-width="2"/>
+</svg>

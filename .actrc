@@ -1,0 +1,15 @@
+# act configuration — run GitHub Actions locally
+# Docs: https://nektosact.com
+#
+# The release workflow targets windows-latest, which act cannot run natively.
+# We map it to a Linux runner and accept minor shell differences (bash vs pwsh).
+# Shell commands in the workflow use bash-compatible syntax for this reason.
+
+# Map windows-latest → ubuntu runner image (medium size, has Node + common tools)
+--platform windows-latest=catthehacker/ubuntu:act-22.04
+
+# Store artifacts locally when using just ci-run
+--artifact-server-path /tmp/act-artifacts
+
+# Use the .github/act/ directory for event payloads
+# (override per-run with: act push -e .github/act/push-tag-event.json)
