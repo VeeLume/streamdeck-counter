@@ -35,8 +35,7 @@ jobs:
       # ── assemble plugin ───────────────────────────────────────────────────────
       - name: Copy binary into plugin folder
         run: |
-          cp target/release/${{ env.BINARY_NAME }}.exe \
-             ${{ env.PLUGIN_DIR }}/bin/${{ env.PLUGIN_UUID }}.exe
+          cp target/release/${{ env.BINARY_NAME }}.exe ${{ env.PLUGIN_DIR }}/bin/${{ env.PLUGIN_UUID }}.exe
 
       # ── elgato CLI ─────────────────────────────────────────────────────────
       - name: Install Elgato Stream Deck CLI
