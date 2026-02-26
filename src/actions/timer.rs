@@ -2,18 +2,89 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 use streamdeck_lib::prelude::*;
 
 use crate::render::render_time_mmss;
 
-// Tick interval for the background thread (100ms for sub-second display accuracy)
 const TICK_MS: u64 = 100;
 
+// ── Globals persistence ──────────────────────────────────────────────────────
+
+/// State stored in cx.globals()["timers"][ctx_id].
+///
+/// When paused:  { "remaining_ms": u64 }
+/// When running: { "remaining_ms": u64, "anchor_unix_ms": u64 }
+///   where remaining = remaining_ms - (now - anchor_unix_ms)  (clamped to 0)
+fn load_state(cx: &Context, ctx_id: &str) -> (u64, bool) {
+    cx.globals()
+        .get("timers")
+        .and_then(|v| v.get(ctx_id).cloned())
+        .map(|entry| {
+            let remaining_base = entry
+                .get("remaining_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            if let Some(anchor) = entry.get("anchor_unix_ms").and_then(|v| v.as_u64()) {
+                let now = unix_now_ms();
+                let elapsed = now.saturating_sub(anchor);
+                let remaining = remaining_base.saturating_sub(elapsed);
+                (remaining, true)
+            } else {
+                (remaining_base, false)
+            }
+        })
+        .unwrap_or((0, false)) // 0 means no saved state — caller uses duration default
+}
+
+fn save_paused(cx: &Context, ctx_id: &str, remaining_ms: u64) {
+    cx.globals().with_mut(|m| {
+        let map = m
+            .entry("timers")
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+            .unwrap();
+        let mut entry = Map::new();
+        entry.insert("remaining_ms".into(), remaining_ms.into());
+        map.insert(ctx_id.to_string(), Value::Object(entry));
+    });
+}
+
+fn save_running(cx: &Context, ctx_id: &str, remaining_ms: u64) {
+    let anchor = unix_now_ms();
+    cx.globals().with_mut(|m| {
+        let map = m
+            .entry("timers")
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+            .unwrap();
+        let mut entry = Map::new();
+        entry.insert("remaining_ms".into(), remaining_ms.into());
+        entry.insert("anchor_unix_ms".into(), anchor.into());
+        map.insert(ctx_id.to_string(), Value::Object(entry));
+    });
+}
+
+fn clear_state(cx: &Context, ctx_id: &str) {
+    cx.globals().with_mut(|m| {
+        if let Some(map) = m.get_mut("timers").and_then(|v| v.as_object_mut()) {
+            map.remove(ctx_id);
+        }
+    });
+}
+
+fn unix_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as u64
+}
+
+// ── Action ───────────────────────────────────────────────────────────────────
+
 pub struct TimerAction {
-    // Shared state between action and tick thread
     remaining_ms: Arc<AtomicU64>,
     cancel: Arc<AtomicBool>,
     epoch: Arc<AtomicU64>,
@@ -63,6 +134,29 @@ impl Action for TimerAction {
     }
 
     fn init(&mut self, cx: &Context, ctx_id: &str) {
+        // Restore persisted state before requesting settings.
+        // If no state is saved yet (first ever init), load_state returns (0, false)
+        // and did_receive_settings will set remaining_ms to duration_ms.
+        let (remaining_ms, was_running) = load_state(cx, ctx_id);
+        if remaining_ms > 0 {
+            self.remaining_ms.store(remaining_ms, Ordering::Relaxed);
+            self.running = was_running;
+            render_time_mmss(cx, ctx_id, remaining_ms / 1000);
+
+            if was_running {
+                if remaining_ms == 0 {
+                    // Expired while we were gone
+                    cx.sd().show_alert(ctx_id);
+                    self.running = false;
+                    save_paused(cx, ctx_id, 0);
+                } else {
+                    // Update anchor and restart tick
+                    save_running(cx, ctx_id, remaining_ms);
+                    self.start_tick(cx, ctx_id);
+                }
+            }
+        }
+
         cx.sd().get_settings(ctx_id);
     }
 
@@ -72,41 +166,37 @@ impl Action for TimerAction {
         self.long_press_ms = long_press_ms;
 
         if new_duration_ms != self.duration_ms {
-            // Duration changed — stop and reset to the new duration
+            // Duration changed in PI — stop and reset to new duration
             self.stop_tick();
             self.running = false;
             self.duration_ms = new_duration_ms;
             self.remaining_ms.store(self.duration_ms, Ordering::Relaxed);
+            clear_state(cx, ev.context);
+            render_time_mmss(cx, ev.context, duration_secs);
+        } else if self.duration_ms == 60_000 && self.remaining_ms.load(Ordering::Relaxed) == 0 {
+            // First-ever init: no persisted state, set to duration
+            self.remaining_ms.store(new_duration_ms, Ordering::Relaxed);
+            self.duration_ms = new_duration_ms;
             render_time_mmss(cx, ev.context, duration_secs);
         } else if !self.running {
-            // Same duration, not running — just re-render current remaining time
+            // Same duration, paused — re-render current remaining
             let remaining_secs = self.remaining_ms.load(Ordering::Relaxed) / 1000;
             render_time_mmss(cx, ev.context, remaining_secs);
         }
-        // If running, the tick thread is already updating the display
+        // If running, tick thread is already updating the display
     }
 
-    fn will_appear(&mut self, cx: &Context, ev: &incoming::WillAppear) {
+    fn teardown(&mut self, cx: &Context, ctx_id: &str) {
+        self.stop_tick();
+        let remaining_ms = self.remaining_ms.load(Ordering::Relaxed);
         if self.running {
-            // Resume the tick thread after a profile/page switch
-            self.start_tick(cx, ev.context);
+            save_running(cx, ctx_id, remaining_ms);
         } else {
-            let remaining_secs = self.remaining_ms.load(Ordering::Relaxed) / 1000;
-            render_time_mmss(cx, ev.context, remaining_secs);
+            save_paused(cx, ctx_id, remaining_ms);
         }
-    }
-
-    fn will_disappear(&mut self, _cx: &Context, _ev: &incoming::WillDisappear) {
-        // Stop the tick thread but keep self.running = true so will_appear can restart it
-        self.stop_tick();
-    }
-
-    fn teardown(&mut self, _cx: &Context, _ctx_id: &str) {
-        self.stop_tick();
     }
 
     fn key_down(&mut self, cx: &Context, ev: &incoming::KeyDown) {
-        // Start long-press timer
         self.down_at = Some(Instant::now());
         self.holding.store(true, Ordering::SeqCst);
 
@@ -139,12 +229,10 @@ impl Action for TimerAction {
             fired_id.store(pid, Ordering::SeqCst);
 
             // Reset timer
-            // Stop the running tick thread first
             cancel.store(true, Ordering::Relaxed);
-            let new_epoch = epoch.fetch_add(1, Ordering::Relaxed) + 1;
-            let _ = new_epoch; // tick thread checks epoch itself
-
+            epoch.fetch_add(1, Ordering::Relaxed);
             remaining_ms.store(duration_ms, Ordering::Relaxed);
+            clear_state(&cx2, &ctx);
             render_time_mmss(&cx2, &ctx, duration_ms / 1000);
         });
     }
@@ -154,7 +242,7 @@ impl Action for TimerAction {
 
         let pid = self.active_press_id.load(Ordering::SeqCst);
         if self.long_fired_press_id.load(Ordering::SeqCst) == pid {
-            // Long press handled the reset — sync our running state
+            // Long press handled the reset
             self.running = false;
             return;
         }
@@ -163,13 +251,15 @@ impl Action for TimerAction {
         if self.running {
             self.stop_tick();
             self.running = false;
-            let remaining_secs = self.remaining_ms.load(Ordering::Relaxed) / 1000;
-            render_time_mmss(cx, ev.context, remaining_secs);
+            let remaining_ms = self.remaining_ms.load(Ordering::Relaxed);
+            save_paused(cx, ev.context, remaining_ms);
+            render_time_mmss(cx, ev.context, remaining_ms / 1000);
         } else {
-            // Don't start if already at zero
             if self.remaining_ms.load(Ordering::Relaxed) == 0 {
                 return;
             }
+            let remaining_ms = self.remaining_ms.load(Ordering::Relaxed);
+            save_running(cx, ev.context, remaining_ms);
             self.start_tick(cx, ev.context);
             self.running = true;
         }
@@ -184,7 +274,6 @@ impl TimerAction {
     }
 
     fn start_tick(&mut self, cx: &Context, ctx_id: &str) {
-        // Increment epoch and clear cancel flag for the new thread
         self.epoch_seq = self.epoch_seq.wrapping_add(1);
         self.epoch.store(self.epoch_seq, Ordering::Relaxed);
         self.cancel.store(false, Ordering::Relaxed);
@@ -209,7 +298,6 @@ impl TimerAction {
 
                 let current = remaining_ms.load(Ordering::Relaxed);
                 if current == 0 {
-                    // Already at zero — alert and exit
                     cx2.sd().show_alert(&ctx);
                     render_time_mmss(&cx2, &ctx, 0);
                     break;
@@ -224,7 +312,6 @@ impl TimerAction {
                     break;
                 }
 
-                // Only update display at whole-second boundaries to reduce render calls
                 let prev_sec = current / 1000;
                 let next_sec = next / 1000;
                 if next_sec != prev_sec {
@@ -235,7 +322,7 @@ impl TimerAction {
     }
 }
 
-// ── Settings ────────────────────────────────────────────────────────────────
+// ── Settings ─────────────────────────────────────────────────────────────────
 
 /// Returns (duration_secs, long_press_ms)
 fn parse_settings(v: &Map<String, Value>) -> (u64, u64) {

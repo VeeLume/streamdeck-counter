@@ -2,7 +2,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 use streamdeck_lib::prelude::*;
@@ -11,8 +11,80 @@ use crate::render::render_time_hhmmss;
 
 const TICK_MS: u64 = 100;
 
+// ── Globals persistence ──────────────────────────────────────────────────────
+
+/// State stored in cx.globals() so it survives instance teardown.
+/// Key: cx.globals()["stopwatches"][ctx_id]
+///
+/// When paused:  { "elapsed_ms": u64 }
+/// When running: { "elapsed_ms": u64, "anchor_unix_ms": u64 }
+///   where elapsed = elapsed_ms + (now - anchor_unix_ms)
+fn load_state(cx: &Context, ctx_id: &str) -> (u64, bool) {
+    cx.globals()
+        .get("stopwatches")
+        .and_then(|v| v.get(ctx_id).cloned())
+        .map(|entry| {
+            let elapsed_base = entry
+                .get("elapsed_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            if let Some(anchor) = entry.get("anchor_unix_ms").and_then(|v| v.as_u64()) {
+                let now = unix_now_ms();
+                let extra = now.saturating_sub(anchor);
+                (elapsed_base.saturating_add(extra), true)
+            } else {
+                (elapsed_base, false)
+            }
+        })
+        .unwrap_or((0, false))
+}
+
+fn save_paused(cx: &Context, ctx_id: &str, elapsed_ms: u64) {
+    cx.globals().with_mut(|m| {
+        let map = m
+            .entry("stopwatches")
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+            .unwrap();
+        let mut entry = Map::new();
+        entry.insert("elapsed_ms".into(), elapsed_ms.into());
+        map.insert(ctx_id.to_string(), Value::Object(entry));
+    });
+}
+
+fn save_running(cx: &Context, ctx_id: &str, elapsed_ms: u64) {
+    let anchor = unix_now_ms();
+    cx.globals().with_mut(|m| {
+        let map = m
+            .entry("stopwatches")
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+            .unwrap();
+        let mut entry = Map::new();
+        entry.insert("elapsed_ms".into(), elapsed_ms.into());
+        entry.insert("anchor_unix_ms".into(), anchor.into());
+        map.insert(ctx_id.to_string(), Value::Object(entry));
+    });
+}
+
+fn clear_state(cx: &Context, ctx_id: &str) {
+    cx.globals().with_mut(|m| {
+        if let Some(map) = m.get_mut("stopwatches").and_then(|v| v.as_object_mut()) {
+            map.remove(ctx_id);
+        }
+    });
+}
+
+fn unix_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as u64
+}
+
+// ── Action ───────────────────────────────────────────────────────────────────
+
 pub struct StopwatchAction {
-    // Shared state between action and tick thread
     elapsed_ms: Arc<AtomicU64>,
     cancel: Arc<AtomicBool>,
     epoch: Arc<AtomicU64>,
@@ -26,7 +98,6 @@ pub struct StopwatchAction {
     active_press_id: Arc<AtomicU64>,
     long_fired_press_id: Arc<AtomicU64>,
 
-    // Cached settings
     long_press_ms: u64,
 }
 
@@ -60,34 +131,36 @@ impl Action for StopwatchAction {
     }
 
     fn init(&mut self, cx: &Context, ctx_id: &str) {
+        // Restore persisted state before requesting settings
+        let (elapsed_ms, was_running) = load_state(cx, ctx_id);
+        self.elapsed_ms.store(elapsed_ms, Ordering::Relaxed);
+        self.running = was_running;
+
+        let elapsed_secs = elapsed_ms / 1000;
+        render_time_hhmmss(cx, ctx_id, elapsed_secs);
+
+        if was_running {
+            // Update the persisted anchor so elapsed continues from now
+            save_running(cx, ctx_id, elapsed_ms);
+            self.start_tick(cx, ctx_id);
+        }
+
         cx.sd().get_settings(ctx_id);
     }
 
-    fn did_receive_settings(&mut self, cx: &Context, ev: &incoming::DidReceiveSettings) {
+    fn did_receive_settings(&mut self, _cx: &Context, ev: &incoming::DidReceiveSettings) {
         self.long_press_ms = parse_settings(&ev.settings);
-        if !self.running {
-            let elapsed_secs = self.elapsed_ms.load(Ordering::Relaxed) / 1000;
-            render_time_hhmmss(cx, ev.context, elapsed_secs);
-        }
     }
 
-    fn will_appear(&mut self, cx: &Context, ev: &incoming::WillAppear) {
+    fn teardown(&mut self, cx: &Context, ctx_id: &str) {
+        self.stop_tick();
+        // Persist current state on teardown (profile switch / SD exit)
+        let elapsed_ms = self.elapsed_ms.load(Ordering::Relaxed);
         if self.running {
-            // Resume the tick thread after a profile/page switch
-            self.start_tick(cx, ev.context);
+            save_running(cx, ctx_id, elapsed_ms);
         } else {
-            let elapsed_secs = self.elapsed_ms.load(Ordering::Relaxed) / 1000;
-            render_time_hhmmss(cx, ev.context, elapsed_secs);
+            save_paused(cx, ctx_id, elapsed_ms);
         }
-    }
-
-    fn will_disappear(&mut self, _cx: &Context, _ev: &incoming::WillDisappear) {
-        // Stop the tick thread but keep self.running = true so will_appear can restart it
-        self.stop_tick();
-    }
-
-    fn teardown(&mut self, _cx: &Context, _ctx_id: &str) {
-        self.stop_tick();
     }
 
     fn key_down(&mut self, cx: &Context, ev: &incoming::KeyDown) {
@@ -125,6 +198,7 @@ impl Action for StopwatchAction {
             cancel.store(true, Ordering::Relaxed);
             epoch.fetch_add(1, Ordering::Relaxed);
             elapsed_ms.store(0, Ordering::Relaxed);
+            clear_state(&cx2, &ctx);
             render_time_hhmmss(&cx2, &ctx, 0);
         });
     }
@@ -143,9 +217,12 @@ impl Action for StopwatchAction {
         if self.running {
             self.stop_tick();
             self.running = false;
-            let elapsed_secs = self.elapsed_ms.load(Ordering::Relaxed) / 1000;
-            render_time_hhmmss(cx, ev.context, elapsed_secs);
+            let elapsed_ms = self.elapsed_ms.load(Ordering::Relaxed);
+            save_paused(cx, ev.context, elapsed_ms);
+            render_time_hhmmss(cx, ev.context, elapsed_ms / 1000);
         } else {
+            let elapsed_ms = self.elapsed_ms.load(Ordering::Relaxed);
+            save_running(cx, ev.context, elapsed_ms);
             self.start_tick(cx, ev.context);
             self.running = true;
         }
@@ -197,7 +274,7 @@ impl StopwatchAction {
     }
 }
 
-// ── Settings ────────────────────────────────────────────────────────────────
+// ── Settings ─────────────────────────────────────────────────────────────────
 
 fn parse_settings(v: &Map<String, Value>) -> u64 {
     match v.get("longPressMs") {
