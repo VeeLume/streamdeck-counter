@@ -51,6 +51,12 @@ pub fn render_time_hhmmss(cx: &Context, ctx_id: &str, total_secs: u64) {
     render_centered_text(cx, ctx_id, &text);
 }
 
+/// Render the timer's "expired" state — same layout as the time display
+/// so the swap looks intentional, not jarring.
+pub fn render_expired(cx: &Context, ctx_id: &str) {
+    render_centered_text(cx, ctx_id, "DONE");
+}
+
 /// Render any short text string centered on a button, with auto-scaling font size.
 fn render_centered_text(cx: &Context, ctx_id: &str, text: &str) {
     let font = font();
