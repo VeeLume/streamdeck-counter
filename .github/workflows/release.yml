@@ -30,6 +30,13 @@ jobs:
       - name: Cache Cargo registry + build
         uses: Swatinem/rust-cache@v2
 
+      # ── derive clean version from tag ────────────────────────────────────────
+      # Tag is v1.2.3 → version is 1.2.3
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       # ── build ────────────────────────────────────────────────────────────────
       - name: cargo build --release
         run: cargo build --release
@@ -38,6 +45,19 @@ jobs:
       - name: Copy binary into plugin folder
         run: |
           cp target/release/${{ env.BINARY_NAME }}.exe ${{ env.PLUGIN_DIR }}/bin/${{ env.PLUGIN_UUID }}.exe
+
+      # ── keep the manifest version in sync with the release tag ────────────────
+      # Stream Deck wants a 4-part version; we use <tag>.<run_number> so each
+      # build is unique and monotonic (e.g. 1.2.3.57).
+      - name: Sync manifest version
+        shell: pwsh
+        run: |
+          $manifest = Join-Path $env:PLUGIN_DIR 'manifest.json'
+          $j = Get-Content $manifest -Raw | ConvertFrom-Json
+          $ver = "${{ steps.version.outputs.version }}.${{ github.run_number }}"
+          $j.Version = $ver
+          $j | ConvertTo-Json -Depth 64 | Set-Content $manifest -Encoding UTF8
+          Write-Host "manifest Version set to $ver"
 
       # ── elgato CLI ─────────────────────────────────────────────────────────
       - name: Install Elgato Stream Deck CLI
@@ -48,13 +68,6 @@ jobs:
 
       - name: Pack plugin
         run: streamdeck pack ${{ env.PLUGIN_DIR }}
-
-      # ── derive clean version from tag ────────────────────────────────────────
-      # Tag is v1.0.0.0 → version is 1.0.0.0
-      - name: Extract version from tag
-        id: version
-        shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # ── upload packed artifact (always available) ─────────────────────────
       - name: Upload plugin artifact
