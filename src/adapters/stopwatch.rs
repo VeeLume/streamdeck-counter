@@ -12,7 +12,7 @@ use crossbeam_channel::{Receiver, RecvTimeoutError};
 use serde_json::{Map, Value};
 use streamdeck_lib::prelude::*;
 
-use crate::render::render_time_hhmmss;
+use crate::render::render_time;
 use crate::topics::{STOPWATCH_CTL, StopwatchControl};
 
 const TICK_MS: u64 = 100;
@@ -148,7 +148,8 @@ fn tick_all(cx: &Context, state: &Mutex<HashMap<String, StopwatchEntry>>) {
 fn render_entry(cx: &Context, ctx_id: &str, entry: &mut StopwatchEntry) {
     let secs = entry.elapsed_ms / 1000;
     entry.last_rendered_sec = Some(secs);
-    render_time_hhmmss(cx, ctx_id, secs);
+    let running = entry.anchor_unix_ms.is_some();
+    render_time(cx, ctx_id, secs, "", running);
 }
 
 fn persist(cx: &Context, ctx_id: &str, entry: &StopwatchEntry) {

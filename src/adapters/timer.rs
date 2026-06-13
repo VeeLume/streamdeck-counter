@@ -19,14 +19,15 @@ use serde_json::{Map, Value};
 use streamdeck_lib::prelude::*;
 
 use crate::audio::Audio;
-use crate::render::{render_expired, render_time_mmss};
+use crate::render::{render_expired, render_time};
 use crate::topics::{TIMER_CTL, TimerControl};
 
 const TICK_MS: u64 = 100;
 
-/// Bump clamp bounds. The MM:SS display tops out at 99:59, so cap there.
+/// Bump clamp bounds. The display now handles hours, so cap at a generous
+/// 99h59m rather than the old 99:59 (MM:SS) ceiling.
 const MIN_DURATION_MS: u64 = 1_000;
-const MAX_DURATION_MS: u64 = 5_999_000; // 99:59
+const MAX_DURATION_MS: u64 = 359_940_000; // 99:59:00 (hours:mins)
 
 pub struct TimerAdapter;
 
@@ -102,10 +103,6 @@ struct TimerEntry {
     anchor_unix_ms: Option<u64>,
     /// Last second value rendered, to suppress redundant set_image calls.
     last_rendered_sec: Option<u64>,
-    /// True if the timer reached 0 since the last time the action saw it.
-    /// Stream Deck drops show_alert for hidden buttons, so we replay it on
-    /// the next Hello (when the page comes back).
-    expired_unack: bool,
     /// True only when expiry happened during plugin downtime (detected at
     /// load_from_globals time). Audio plays fine off-screen, so the live
     /// tick path does NOT set this — only the missed-while-down case does.
@@ -138,17 +135,11 @@ fn handle_ctl(
                 entry.remaining_ms = entry.remaining_ms.saturating_sub(elapsed);
                 if entry.remaining_ms == 0 {
                     entry.anchor_unix_ms = None;
-                    entry.expired_unack = true;
                 } else {
                     entry.anchor_unix_ms = Some(unix_now_ms());
                 }
             }
             render_entry(cx, ctx_id, entry);
-            // Now that the button is visible again, replay any pending alert.
-            if entry.expired_unack {
-                cx.sd().show_alert(ctx_id);
-                entry.expired_unack = false;
-            }
             // Only beep if we actually missed it (plugin was down at expiry).
             // A timer that expired off-screen during normal operation already
             // beeped from the live tick path.
@@ -182,7 +173,6 @@ fn handle_ctl(
                     // Expired — short press resets back to full duration
                     entry.remaining_ms = entry.duration_ms;
                     entry.last_rendered_sec = None;
-                    entry.expired_unack = false;
                     entry.beep_pending = false;
                 } else {
                     // Start
@@ -199,7 +189,6 @@ fn handle_ctl(
                 entry.remaining_ms = entry.configured_duration_ms;
                 entry.anchor_unix_ms = None;
                 entry.last_rendered_sec = None;
-                entry.expired_unack = false;
                 entry.beep_pending = false;
                 render_entry(cx, ctx_id, entry);
                 persist(cx, ctx_id, entry);
@@ -223,7 +212,6 @@ fn handle_ctl(
                 entry.remaining_ms = next;
                 entry.last_rendered_sec = None;
                 // A bump on an expired timer revives it to a fresh idle state.
-                entry.expired_unack = false;
                 entry.beep_pending = false;
                 render_entry(cx, ctx_id, entry);
                 persist(cx, ctx_id, entry);
@@ -252,8 +240,6 @@ fn tick_all(cx: &Context, state: &Mutex<HashMap<String, TimerEntry>>, audio: &Au
 
         if entry.remaining_ms == 0 {
             entry.anchor_unix_ms = None;
-            entry.expired_unack = true;
-            cx.sd().show_alert(ctx_id);
             audio.play_expiry_beep();
             render_entry(cx, ctx_id, entry);
             transitions.push(ctx_id.clone());
@@ -280,7 +266,6 @@ impl TimerEntry {
             remaining_ms: duration_ms,
             anchor_unix_ms: None,
             last_rendered_sec: None,
-            expired_unack: false,
             beep_pending: false,
         }
     }
@@ -296,7 +281,8 @@ fn render_entry(cx: &Context, ctx_id: &str, entry: &mut TimerEntry) {
     }
     let secs = entry.remaining_ms / 1000;
     entry.last_rendered_sec = Some(secs);
-    render_time_mmss(cx, ctx_id, secs, &entry.name);
+    let running = entry.anchor_unix_ms.is_some();
+    render_time(cx, ctx_id, secs, &entry.name, running);
 }
 
 // ── Globals persistence ──────────────────────────────────────────────────────
@@ -318,9 +304,6 @@ fn persist(cx: &Context, ctx_id: &str, entry: &TimerEntry) {
         if let Some(anchor) = entry.anchor_unix_ms {
             e.insert("anchor_unix_ms".into(), anchor.into());
         }
-        if entry.expired_unack {
-            e.insert("expired_unack".into(), true.into());
-        }
         map.insert(ctx_id.to_string(), Value::Object(e));
     });
 }
@@ -339,10 +322,6 @@ fn load_from_globals(cx: &Context, ctx_id: &str) -> Option<TimerEntry> {
         .and_then(|n| n.as_u64())
         .unwrap_or(duration_ms);
     let mut anchor = v.get("anchor_unix_ms").and_then(|n| n.as_u64());
-    let mut expired_unack = v
-        .get("expired_unack")
-        .and_then(|b| b.as_bool())
-        .unwrap_or(false);
     let mut beep_pending = false;
     if let Some(a) = anchor {
         let elapsed = unix_now_ms().saturating_sub(a);
@@ -351,7 +330,6 @@ fn load_from_globals(cx: &Context, ctx_id: &str) -> Option<TimerEntry> {
             anchor = None;
             // Plugin was down when this expired — user never heard the beep,
             // so queue it for the next Hello.
-            expired_unack = true;
             beep_pending = true;
         } else {
             anchor = Some(unix_now_ms());
@@ -364,7 +342,6 @@ fn load_from_globals(cx: &Context, ctx_id: &str) -> Option<TimerEntry> {
         remaining_ms,
         anchor_unix_ms: anchor,
         last_rendered_sec: None,
-        expired_unack,
         beep_pending,
     })
 }

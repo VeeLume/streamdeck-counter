@@ -40,17 +40,44 @@ pub fn render_number(cx: &Context, ctx_id: &str, value: i64) {
     render_centered_text(cx, ctx_id, &text);
 }
 
-/// Format seconds as `MM:SS` (minutes capped at 99).
-fn fmt_mmss(total_secs: u64) -> String {
-    let mins = (total_secs / 60).min(99);
-    let secs = total_secs % 60;
-    format!("{:02}:{:02}", mins, secs)
+/// All time values are sized against this reference so `01:45`, `05:00`, and
+/// `59:59` render at one consistent font size. The mono font makes every glyph
+/// the same width, so any zero-padded `NN:NN` value matches this width exactly.
+const TIME_SIZE_REF: &str = "00:00";
+
+/// Format a duration for a button: `MM:SS` below one hour, `HH:MM` (hours and
+/// minutes, no seconds) from one hour up. Both forms are zero-padded to five
+/// glyphs so successive renders stay aligned. Short durations keep ticking by
+/// the second; long ones display without the old 99:59 truncation. The lack of
+/// a ticking seconds field (plus the blinking colon) is what reads as "hours".
+///
+/// `sep` is the minutes separator — normally `':'`, but the caller passes `' '`
+/// to blink the colon off for the running "heartbeat".
+fn fmt_duration(total_secs: u64, sep: char) -> String {
+    if total_secs < 3600 {
+        format!("{:02}{sep}{:02}", total_secs / 60, total_secs % 60)
+    } else {
+        format!("{:02}{sep}{:02}", total_secs / 3600, (total_secs % 3600) / 60)
+    }
 }
 
-/// Render remaining seconds in `MM:SS` format (max 99:59), with the timer
-/// `name` as a small label beneath when it is non-empty.
-pub fn render_time_mmss(cx: &Context, ctx_id: &str, total_secs: u64, name: &str) {
-    render_labeled(cx, ctx_id, &fmt_mmss(total_secs), Color::WHITE, name, Color::TRANSPARENT);
+/// Render a time value (timer remaining or stopwatch elapsed) with the optional
+/// `name` as a small label beneath when non-empty. See [`fmt_duration`].
+///
+/// While `running`, the colon blinks once per second (visible on even seconds)
+/// so a long timer reads as alive even when its minutes aren't changing; when
+/// paused it stays solid. Sized against [`TIME_SIZE_REF`] for a stable size.
+pub fn render_time(cx: &Context, ctx_id: &str, total_secs: u64, name: &str, running: bool) {
+    let sep = if running && !total_secs.is_multiple_of(2) { ' ' } else { ':' };
+    render_labeled(
+        cx,
+        ctx_id,
+        &fmt_duration(total_secs, sep),
+        TIME_SIZE_REF,
+        Color::WHITE,
+        name,
+        Color::TRANSPARENT,
+    );
 }
 
 /// Render a "+/-" adjustment button: a signed, color-coded delta (green for
@@ -61,23 +88,7 @@ pub fn render_adjust(cx: &Context, ctx_id: &str, delta_secs: i64, name: &str) {
     let abs = delta_secs.unsigned_abs();
     // No leading zero on minutes — reads as an adjustment ("+1:30"), not a clock.
     let text = format!("{sign}{}:{:02}", abs / 60, abs % 60);
-    render_labeled(cx, ctx_id, &text, color, name, Color::TRANSPARENT);
-}
-
-/// Render elapsed seconds in `HH:MM:SS` format (for values ≥ 3600 s).
-/// Falls back to `MM:SS` for shorter durations.
-pub fn render_time_hhmmss(cx: &Context, ctx_id: &str, total_secs: u64) {
-    let text = if total_secs >= 3600 {
-        let hours = total_secs / 3600;
-        let mins = (total_secs % 3600) / 60;
-        let secs = total_secs % 60;
-        format!("{:02}:{:02}:{:02}", hours, mins, secs)
-    } else {
-        let mins = total_secs / 60;
-        let secs = total_secs % 60;
-        format!("{:02}:{:02}", mins, secs)
-    };
-    render_centered_text(cx, ctx_id, &text);
+    render_labeled(cx, ctx_id, &text, &text, color, name, Color::TRANSPARENT);
 }
 
 /// Render the timer's "expired" state — a filled red background with "DONE"
@@ -86,12 +97,12 @@ pub fn render_time_hhmmss(cx: &Context, ctx_id: &str, total_secs: u64) {
 pub fn render_expired(cx: &Context, ctx_id: &str, name: &str, reset_secs: u64) {
     let reset_label;
     let label = if name.trim().is_empty() {
-        reset_label = fmt_mmss(reset_secs);
+        reset_label = fmt_duration(reset_secs, ':');
         reset_label.as_str()
     } else {
         name
     };
-    render_labeled(cx, ctx_id, "DONE", Color::WHITE, label, DONE_BG);
+    render_labeled(cx, ctx_id, "DONE", "DONE", Color::WHITE, label, DONE_BG);
 }
 
 /// Render any short text string centered on a button, with auto-scaling font size.
@@ -130,6 +141,10 @@ fn render_centered_text(cx: &Context, ctx_id: &str, text: &str) {
 /// Render a large primary string with an optional small `label` beneath it,
 /// over an optional background fill (`Color::TRANSPARENT` for none).
 ///
+/// The primary is sized to fit the wider of itself and `size_ref` — pass a
+/// fixed reference (e.g. `TIME_SIZE_REF`) to keep a changing value at a stable
+/// size, or pass `primary` itself for plain content-fit sizing.
+///
 /// With a label, the primary is seated in the upper area and the label near
 /// the bottom (truncated to fit). Without one, the primary is centered — so a
 /// nameless timer looks exactly as it did before.
@@ -137,6 +152,7 @@ fn render_labeled(
     cx: &Context,
     ctx_id: &str,
     primary: &str,
+    size_ref: &str,
     primary_color: Color,
     label: &str,
     bg: Color,
@@ -149,14 +165,17 @@ fn render_labeled(
         canvas.fill(bg);
     }
 
+    // Size against whichever is wider so a fixed reference can pin the size.
+    let sizing = wider(font, primary, size_ref);
+
     let label = label.trim();
     if label.is_empty() {
         // No label: center the primary, full size range (unchanged look).
-        let size = fit_size(font, primary, MAX_WIDTH, &[56.0, 44.0, 36.0, 28.0, 20.0]);
+        let size = fit_size(font, sizing, MAX_WIDTH, &[56.0, 44.0, 36.0, 28.0, 20.0]);
         draw_line(&mut canvas, font, primary, size, primary_color, VAlign::Center);
     } else {
         // Primary in the upper area, slightly smaller to leave room.
-        let size = fit_size(font, primary, MAX_WIDTH, &[52.0, 44.0, 36.0, 28.0, 20.0]);
+        let size = fit_size(font, sizing, MAX_WIDTH, &[52.0, 44.0, 36.0, 28.0, 20.0]);
         draw_line(
             &mut canvas,
             font,
@@ -181,6 +200,15 @@ fn render_labeled(
 
     if let Ok(data_url) = canvas.finish().to_data_url() {
         cx.sd().set_image(ctx_id, Some(data_url), None, None);
+    }
+}
+
+/// Return whichever of `a` / `b` renders wider (measured at a common scale).
+fn wider<'a>(font: &FontHandle, a: &'a str, b: &'a str) -> &'a str {
+    if measure_line(font, 10.0, a) >= measure_line(font, 10.0, b) {
+        a
+    } else {
+        b
     }
 }
 
@@ -231,4 +259,32 @@ fn draw_line(
         .h_align(HAlign::Center)
         .v_align(valign);
     canvas.draw_text(&lines, &topts).ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fmt_duration;
+
+    #[test]
+    fn under_an_hour_is_mm_ss() {
+        assert_eq!(fmt_duration(0, ':'), "00:00");
+        assert_eq!(fmt_duration(59, ':'), "00:59");
+        assert_eq!(fmt_duration(60, ':'), "01:00");
+        assert_eq!(fmt_duration(3599, ':'), "59:59"); // one second under an hour
+    }
+
+    #[test]
+    fn from_an_hour_up_is_hh_mm() {
+        assert_eq!(fmt_duration(3600, ':'), "01:00"); // exactly one hour, zero-padded
+        assert_eq!(fmt_duration(3660, ':'), "01:01");
+        assert_eq!(fmt_duration(5400, ':'), "01:30"); // 1h30m
+        assert_eq!(fmt_duration(6000, ':'), "01:40"); // would have been 100:00 before
+        assert_eq!(fmt_duration(359_940, ':'), "99:59"); // bump clamp ceiling
+    }
+
+    #[test]
+    fn blink_separator_swaps_the_colon() {
+        assert_eq!(fmt_duration(90, ' '), "01 30"); // colon blinked off
+        assert_eq!(fmt_duration(5400, ' '), "01 30"); // same in HH:MM mode
+    }
 }
