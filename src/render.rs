@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use streamdeck_lib::Context;
 use streamdeck_render::{
-    Canvas, Color, FontHandle, FontRegistry, HAlign, TextOptions, VAlign, WrapOptions,
+    BorderStyle, Canvas, Color, FontHandle, FontRegistry, HAlign, TextOptions, VAlign, WrapOptions,
     measure_line, wrap_text,
 };
 
@@ -15,6 +15,35 @@ const SUB_COLOR: Color = Color::rgb(231, 90, 76);
 const DONE_BG: Color = Color::rgb(184, 50, 40);
 /// Secondary label (the timer name) — dimmed white, readable on dark or red.
 const LABEL_COLOR: Color = Color::rgba(255, 255, 255, 190);
+
+/// Transient action feedback drawn as an **edge vignette** — visible at the
+/// corners around a finger, unlike the native `showOk`/`showAlert` which draw
+/// a centered icon the finger covers. Prototyped here; destined for the libs.
+#[derive(Clone, Copy, Debug)]
+pub enum Feedback {
+    /// The action took effect (green).
+    Ok,
+    /// The action did nothing / was invalid (amber-red).
+    Alert,
+}
+
+impl Feedback {
+    /// Edge color — bright at the rim; the vignette fades it inward.
+    fn color(self) -> Color {
+        match self {
+            Feedback::Ok => Color::rgba(60, 200, 110, 235),
+            Feedback::Alert => Color::rgba(232, 120, 60, 235),
+        }
+    }
+
+    fn border(self) -> BorderStyle {
+        BorderStyle::Vignette {
+            width: 26.0,
+            radius: 18.0, // ~matches the Stream Deck key corner rounding
+            color: self.color(),
+        }
+    }
+}
 
 // Embed the font at compile time — no runtime file I/O needed.
 static FONT: OnceLock<FontHandle> = OnceLock::new();
@@ -37,7 +66,15 @@ fn font() -> &'static FontHandle {
 /// The font size scales down automatically for long numbers so they always fit.
 pub fn render_number(cx: &Context, ctx_id: &str, value: i64) {
     let text = value.to_string();
-    render_centered_text(cx, ctx_id, &text);
+    render_centered_text(cx, ctx_id, &text, None);
+}
+
+/// Render a counter value with a transient [`Feedback`] vignette overlaid —
+/// used to confirm a press took effect even while a finger covers the center.
+/// The caller is responsible for re-rendering the plain value afterwards.
+pub fn render_number_feedback(cx: &Context, ctx_id: &str, value: i64, fb: Feedback) {
+    let text = value.to_string();
+    render_centered_text(cx, ctx_id, &text, Some(fb));
 }
 
 /// All time values are sized against this reference so `01:45`, `05:00`, and
@@ -105,8 +142,9 @@ pub fn render_expired(cx: &Context, ctx_id: &str, name: &str, reset_secs: u64) {
     render_labeled(cx, ctx_id, "DONE", "DONE", Color::WHITE, label, DONE_BG);
 }
 
-/// Render any short text string centered on a button, with auto-scaling font size.
-fn render_centered_text(cx: &Context, ctx_id: &str, text: &str) {
+/// Render any short text string centered on a button, with auto-scaling font
+/// size and an optional edge-vignette [`Feedback`] frame.
+fn render_centered_text(cx: &Context, ctx_id: &str, text: &str, frame: Option<Feedback>) {
     let font = font();
 
     // Try font sizes from largest to smallest until the text fits in one line.
@@ -131,6 +169,9 @@ fn render_centered_text(cx: &Context, ctx_id: &str, text: &str) {
         canvas
             .draw_text(&lines, &TextOptions::new(font.clone(), chosen_size))
             .ok();
+    }
+    if let Some(fb) = frame {
+        canvas.draw_border(&fb.border());
     }
 
     if let Ok(data_url) = canvas.finish().to_data_url() {

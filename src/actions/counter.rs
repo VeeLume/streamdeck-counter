@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use streamdeck_lib::prelude::*;
 
-use crate::render::render_number;
+use crate::render::{Feedback, render_number, render_number_feedback};
 use crate::state::{counter_key, init_or_load_counter, read_counter, write_counter};
 use crate::topics::{COUNTER_CHANGED, CounterChanged};
 
@@ -115,7 +115,12 @@ impl Action for CounterAction {
                     COUNTER_CHANGED,
                     CounterChanged { counter_key: key.clone(), value: next },
                 );
-                render_number(&cx2, &ctx, next);
+                // Confirm the long-press took effect with an edge-visible OK
+                // vignette (the finger covers the center), then revert.
+                flash_feedback(&cx2, &ctx, &key, settings.initial_value, Feedback::Ok);
+            } else if !matches!(settings.long_action, Op::None) {
+                // A long action was configured but had no effect (e.g. ÷0, ×1).
+                flash_feedback(&cx2, &ctx, &key, settings.initial_value, Feedback::Alert);
             }
         });
     }
@@ -252,6 +257,19 @@ fn get_op(v: &Map<String, Value>, k: &str) -> Option<Op> {
         "set" => Some(Op::Set),
         _ => None,
     })
+}
+
+// ── Feedback ──────────────────────────────────────────────────────────────────
+
+/// Flash an edge-vignette [`Feedback`] over the live counter value, then revert
+/// to the current value after a short delay. Called from the long-press thread,
+/// which is already detached, so the blocking sleep is fine here.
+fn flash_feedback(cx: &Context, ctx_id: &str, key: &str, initial: i64, fb: Feedback) {
+    const FEEDBACK_MS: u64 = 650;
+    let value = read_counter(cx, key, initial);
+    render_number_feedback(cx, ctx_id, value, fb);
+    std::thread::sleep(Duration::from_millis(FEEDBACK_MS));
+    render_number(cx, ctx_id, read_counter(cx, key, initial));
 }
 
 // ── Math ────────────────────────────────────────────────────────────────────
