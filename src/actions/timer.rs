@@ -53,7 +53,7 @@ impl Action for TimerAction {
     }
 
     fn did_receive_settings(&mut self, cx: &Context, ev: &incoming::DidReceiveSettings) {
-        let (duration_secs, long_press_ms) = parse_settings(&ev.settings);
+        let (duration_secs, long_press_ms, name) = parse_settings(&ev.settings);
         self.long_press_ms = long_press_ms;
         let new_duration_ms = duration_secs.saturating_mul(1000);
 
@@ -64,15 +64,19 @@ impl Action for TimerAction {
                 TIMER_CTL,
                 TimerControl::Hello {
                     ctx_id: ev.context.to_string(),
+                    name,
                     duration_ms: new_duration_ms,
                 },
             );
-        } else if self.duration_ms != new_duration_ms {
+        } else {
+            // Re-send on any settings change so the adapter picks up a renamed
+            // timer even when the duration is unchanged.
             self.duration_ms = new_duration_ms;
             cx.bus().publish_t(
                 TIMER_CTL,
                 TimerControl::Reconfigure {
                     ctx_id: ev.context.to_string(),
+                    name,
                     duration_ms: new_duration_ms,
                 },
             );
@@ -132,8 +136,8 @@ impl Action for TimerAction {
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-/// Returns (duration_secs, long_press_ms)
-fn parse_settings(v: &Map<String, Value>) -> (u64, u64) {
+/// Returns (duration_secs, long_press_ms, timer_name)
+fn parse_settings(v: &Map<String, Value>) -> (u64, u64, String) {
     let duration_secs = match v.get("durationSecs") {
         Some(Value::Number(n)) => n.as_u64().unwrap_or(60),
         Some(Value::String(s)) => s.trim().parse().unwrap_or(60),
@@ -144,5 +148,11 @@ fn parse_settings(v: &Map<String, Value>) -> (u64, u64) {
         Some(Value::String(s)) => s.trim().parse().unwrap_or(500),
         _ => 500,
     };
-    (duration_secs.max(1), long_press_ms)
+    let name = v
+        .get("timerName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    (duration_secs.max(1), long_press_ms, name)
 }

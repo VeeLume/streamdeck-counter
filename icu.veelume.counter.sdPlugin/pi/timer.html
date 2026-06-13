@@ -9,6 +9,10 @@
         <sdpi-textfield setting="durationSecs" type="number" placeholder="60" min="1"></sdpi-textfield>
     </sdpi-item>
 
+    <sdpi-item label="Timer Name">
+        <sdpi-textfield setting="timerName" placeholder="(optional)"></sdpi-textfield>
+    </sdpi-item>
+
     <sdpi-item label="Long Press (ms)">
         <sdpi-textfield setting="longPressMs" type="number" placeholder="500"></sdpi-textfield>
     </sdpi-item>
@@ -17,7 +21,8 @@
         <sdpi-item-child>
             <small>
                 Short press: start / stop<br>
-                Long press: reset to duration
+                Long press: reset to duration<br>
+                Name the timer to control it with a "Timer +/-" button.
             </small>
         </sdpi-item-child>
     </sdpi-item>

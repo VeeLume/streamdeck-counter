@@ -24,13 +24,25 @@ pub const TIMER_CTL: TopicId<TimerControl> = TopicId::new("timer_ctl");
 pub enum TimerControl {
     /// Action mounted (init + first settings). Adapter creates state if absent
     /// or rehydrates from globals; then renders current value.
-    Hello { ctx_id: String, duration_ms: u64 },
+    /// `name` is the shared timer name used to route `Adjust` (may be empty).
+    Hello {
+        ctx_id: String,
+        name: String,
+        duration_ms: u64,
+    },
     /// Settings changed in PI. Adapter resets to new duration only if it changed.
-    Reconfigure { ctx_id: String, duration_ms: u64 },
+    Reconfigure {
+        ctx_id: String,
+        name: String,
+        duration_ms: u64,
+    },
     /// Short press: toggle start/pause.
     Toggle { ctx_id: String },
-    /// Long press: reset to duration (paused).
+    /// Long press: reset to the PI-configured duration (paused).
     Reset { ctx_id: String },
+    /// Bump button: add/subtract from the working duration of every *idle*
+    /// timer whose name matches `target`. Running timers ignore it.
+    Adjust { target: String, delta_ms: i64 },
 }
 
 // ── Stopwatch ──────────────────────────────────────────────────────────────

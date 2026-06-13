@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <script src="sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Target Timer">
+        <sdpi-textfield setting="targetTimer" placeholder="(matches Timer Name)"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Adjust by (seconds)">
+        <sdpi-textfield setting="deltaSecs" type="number" placeholder="60"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Usage">
+        <sdpi-item-child>
+            <small>
+                Press to add (or subtract, if negative) the seconds above to the
+                matching timer.<br>
+                Set <b>Target Timer</b> to the same <b>Timer Name</b> as the timer
+                you want to control.<br>
+                Only applies while the timer is idle — running timers ignore it.
+            </small>
+        </sdpi-item-child>
+    </sdpi-item>
+</body>
+</html>

@@ -10,7 +10,7 @@ use tracing::info;
 
 use actions::{
     computed::ComputedAction, counter::CounterAction, stopwatch::StopwatchAction,
-    timer::TimerAction,
+    timer::TimerAction, timer_adjust::TimerAdjustAction,
 };
 use adapters::{stopwatch::StopwatchAdapter, timer::TimerAdapter};
 
@@ -24,6 +24,7 @@ fn main() -> anyhow::Result<()> {
         .add_action(ActionFactory::default_of::<CounterAction>())
         .add_action(ActionFactory::default_of::<ComputedAction>())
         .add_action(ActionFactory::default_of::<TimerAction>())
+        .add_action(ActionFactory::default_of::<TimerAdjustAction>())
         .add_action(ActionFactory::default_of::<StopwatchAction>())
         .add_adapter(TimerAdapter)
         .add_adapter(StopwatchAdapter);

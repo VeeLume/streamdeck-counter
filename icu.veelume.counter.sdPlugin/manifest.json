@@ -67,6 +67,21 @@
             ]
         },
         {
+            "UUID": "icu.veelume.counter.timeradjust",
+            "Name": "Timer +/-",
+            "Tooltip": "Adds or subtracts time from a named timer while it is idle.",
+            "Icon": "images/timer",
+            "PropertyInspectorPath": "pi/timer_adjust.html",
+            "Controllers": [
+                "Keypad"
+            ],
+            "States": [
+                {
+                    "Image": "images/timer"
+                }
+            ]
+        },
+        {
             "UUID": "icu.veelume.counter.stopwatch",
             "Name": "Stopwatch",
             "Tooltip": "A simple stopwatch.",
